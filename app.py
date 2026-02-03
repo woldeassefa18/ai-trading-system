@@ -107,6 +107,7 @@ if ai_signal != last_signal and confidence > 55 and trend_ok:
         f.write(ai_signal)
 
 # -------- JOURNAL --------
+
 log_file="trade_log.csv"
 entry=pd.DataFrame([{"Date":datetime.now(),"Stock":symbol,"Price":current_price,
                      "Prediction":pred_price,"Signal":ai_signal,"Confidence":confidence}])
@@ -114,7 +115,31 @@ entry.to_csv(log_file,mode='a',header=not os.path.exists(log_file),index=False)
 st.subheader("📒 Trade Journal")
 st.dataframe(pd.read_csv(log_file).tail())
 
+# -------- PERFORMANCE ANALYTICS --------
+st.subheader("📊 Strategy Performance")
+
+journal = pd.read_csv(log_file)
+
+if len(journal) > 5:
+    journal['Result'] = np.where(
+        (journal['Signal'] == "BUY") & (journal['Prediction'] > journal['Price']), "Win",
+        np.where((journal['Signal'] == "SELL") & (journal['Prediction'] < journal['Price']), "Win", "Loss")
+    )
+
+    wins = (journal['Result'] == "Win").sum()
+    losses = (journal['Result'] == "Loss").sum()
+    accuracy = wins / (wins + losses) * 100 if wins + losses > 0 else 0
+
+    st.metric("Total Trades", len(journal))
+    st.metric("Wins", wins)
+    st.metric("Losses", losses)
+    st.metric("Accuracy", f"{accuracy:.2f}%")
+else:
+    st.info("Not enough trades yet for performance stats.")
+
+
 # -------- MULTI-STOCK SCANNER --------
+
 st.subheader("📡 AI Market Scanner")
 scan_list = st.sidebar.text_area(
     "Stocks to Scan",
