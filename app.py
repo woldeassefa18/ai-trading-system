@@ -56,6 +56,7 @@ if len(features) < 80:
     st.stop()
 
 # -------- AI PREP --------
+
 scaler = MinMaxScaler()
 scaled = scaler.fit_transform(features)
 
@@ -83,6 +84,7 @@ else:
     model.save(model_path)
 
 # -------- SIGNAL --------
+
 last_seq = X[-1].reshape(1, window, X.shape[2])
 pred_scaled = model.predict(last_seq, verbose=0)
 pred_price = scaler.inverse_transform(np.concatenate([pred_scaled,np.zeros((1,8))],axis=1))[0][0]
@@ -95,6 +97,7 @@ st.subheader("🧠 AI Signal")
 st.write(f"Signal: **{ai_signal}** | Confidence: **{confidence:.2f}%**")
 
 # -------- SMART ALERT --------
+
 state_file = "last_signal.txt"
 last_signal = open(state_file).read().strip() if os.path.exists(state_file) else "NONE"
 
@@ -116,6 +119,7 @@ st.subheader("📒 Trade Journal")
 st.dataframe(pd.read_csv(log_file).tail())
 
 # -------- PERFORMANCE ANALYTICS --------
+
 st.subheader("📊 Strategy Performance")
 
 journal = pd.read_csv(log_file)
@@ -136,6 +140,25 @@ if len(journal) > 5:
     st.metric("Accuracy", f"{accuracy:.2f}%")
 else:
     st.info("Not enough trades yet for performance stats.")
+
+# -------- RISK MANAGEMENT ENGINE --------
+st.subheader("🛡 Risk Management")
+
+capital = st.number_input("Account Capital ($)", value=10000)
+risk_percent = st.slider("Risk per Trade (%)", 1, 5, 2)
+
+risk_amount = capital * (risk_percent / 100)
+
+atr = data['ATR'].iloc[-1]
+stop_loss = current_price - atr if ai_signal == "BUY" else current_price + atr
+take_profit = current_price + atr*2 if ai_signal == "BUY" else current_price - atr*2
+
+position_size = risk_amount / abs(current_price - stop_loss)
+
+st.metric("Risk Amount", f"${risk_amount:.2f}")
+st.metric("Position Size (shares)", f"{position_size:.2f}")
+st.metric("Stop Loss", f"{stop_loss:.2f}")
+st.metric("Take Profit", f"{take_profit:.2f}")
 
 
 # -------- MULTI-STOCK SCANNER --------
