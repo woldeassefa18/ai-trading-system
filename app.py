@@ -154,13 +154,45 @@ st.metric("Position Size",f"{position_size:.2f}")
 
 # -------- PORTFOLIO --------
 st.subheader("💼 Portfolio Allocation")
-portfolio={"RELIANCE.NS":0.25,"TCS.NS":0.25,"INFY.NS":0.25,"HDFCBANK.NS":0.25}
-portfolio_value=0
-for stock,weight in portfolio.items():
-    df=yf.download(stock,period="1y")
-    ret=(df['Close'].iloc[-1]/df['Close'].iloc[0]-1)
-    portfolio_value+=capital*weight*(1+ret)
-st.metric("Portfolio Value",f"${portfolio_value:,.2f}")
+
+portfolio = {
+    "RELIANCE.NS": 0.25,
+    "TCS.NS": 0.25,
+    "INFY.NS": 0.25,
+    "HDFCBANK.NS": 0.25
+}
+
+portfolio_value = 0.0  # ensure float
+
+for stock, weight in portfolio.items():
+    try:
+        df = yf.download(stock, period="1y", progress=False)
+
+        if df.empty or 'Close' not in df:
+            continue
+
+        close = df['Close']
+
+        # If multi-column, take first column
+        if isinstance(close, pd.DataFrame):
+            close = close.iloc[:, 0]
+
+        # Drop NaNs
+        close = close.dropna()
+
+        if len(close) < 2:
+            continue
+
+        start_price = float(close.iloc[0])
+        end_price = float(close.iloc[-1])
+
+        ret = (end_price / start_price) - 1
+        portfolio_value += float(capital) * float(weight) * (1 + ret)
+
+    except:
+        continue
+
+st.metric("Portfolio Value", f"${float(portfolio_value):,.2f}")
 
 # -------- AUTO LOOP --------
 time.sleep(900)
