@@ -1,4 +1,5 @@
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -9,12 +10,15 @@ from datetime import datetime
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import LSTM, Dense
-import plotly.graph_objects as go
 
+# -------- PAGE SETUP --------
 st.set_page_config(page_title="AI Trading Platform", layout="wide")
 st.title("🤖 AI Trading Platform")
 
-# ---------------- TELEGRAM ----------------
+# 🔄 AUTO REFRESH EVERY 15 MINUTES
+st_autorefresh(interval=15 * 60 * 1000, key="scanner")
+
+# -------- TELEGRAM FUNCTION --------
 def send_telegram_alert(message):
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
@@ -25,7 +29,7 @@ def send_telegram_alert(message):
         except:
             pass
 
-# ---------------- STOCK INPUT ----------------
+# -------- SINGLE STOCK ANALYSIS --------
 st.sidebar.subheader("🔍 Single Stock Analysis")
 symbol = st.sidebar.text_input("Stock Symbol", "RELIANCE.NS")
 
@@ -37,7 +41,7 @@ if data.empty:
 if isinstance(data.columns, pd.MultiIndex):
     data.columns = data.columns.get_level_values(0)
 
-# ---------------- INDICATORS ----------------
+# -------- INDICATORS --------
 data['RSI'] = ta.momentum.RSIIndicator(data['Close']).rsi()
 data['EMA50'] = ta.trend.EMAIndicator(data['Close'], 50).ema_indicator()
 data['EMA200'] = ta.trend.EMAIndicator(data['Close'], 200).ema_indicator()
@@ -51,7 +55,7 @@ if len(features) < 80:
     st.error("Not enough data for AI model.")
     st.stop()
 
-# ---------------- AI PREP ----------------
+# -------- AI PREP --------
 scaler = MinMaxScaler()
 scaled = scaler.fit_transform(features)
 
@@ -62,7 +66,7 @@ for i in range(window, len(scaled)):
     y.append(scaled[i,0])
 X, y = np.array(X), np.array(y)
 
-# ---------------- MODEL ----------------
+# -------- MODEL --------
 model_path = "ai_model.keras"
 if os.path.exists(model_path):
     model = load_model(model_path, compile=False)
@@ -78,7 +82,7 @@ else:
     model.fit(X, y, epochs=5, batch_size=16, verbose=0)
     model.save(model_path)
 
-# ---------------- SIGNAL ----------------
+# -------- SIGNAL --------
 last_seq = X[-1].reshape(1, window, X.shape[2])
 pred_scaled = model.predict(last_seq, verbose=0)
 pred_price = scaler.inverse_transform(np.concatenate([pred_scaled,np.zeros((1,8))],axis=1))[0][0]
@@ -90,9 +94,10 @@ confidence = min(abs(pred_price-current_price)/current_price*100*5,95)
 st.subheader("🧠 AI Signal")
 st.write(f"Signal: **{ai_signal}** | Confidence: **{confidence:.2f}%**")
 
-# ---------------- SMART ALERT ----------------
+# -------- SMART ALERT --------
 state_file = "last_signal.txt"
 last_signal = open(state_file).read().strip() if os.path.exists(state_file) else "NONE"
+
 trend_ok = (ai_signal=="BUY" and data['EMA50'].iloc[-1]>data['EMA200'].iloc[-1]) or \
            (ai_signal=="SELL" and data['EMA50'].iloc[-1]<data['EMA200'].iloc[-1])
 
@@ -101,7 +106,7 @@ if ai_signal != last_signal and confidence > 55 and trend_ok:
     with open(state_file,"w") as f:
         f.write(ai_signal)
 
-# ---------------- JOURNAL ----------------
+# -------- JOURNAL --------
 log_file="trade_log.csv"
 entry=pd.DataFrame([{"Date":datetime.now(),"Stock":symbol,"Price":current_price,
                      "Prediction":pred_price,"Signal":ai_signal,"Confidence":confidence}])
@@ -109,39 +114,7 @@ entry.to_csv(log_file,mode='a',header=not os.path.exists(log_file),index=False)
 st.subheader("📒 Trade Journal")
 st.dataframe(pd.read_csv(log_file).tail())
 
-# ---------------- SL/TP BACKTEST ----------------
-st.subheader("📊 Strategy Backtest")
-capital=10000
-equity=[capital]
-prices=features['Close'].values
-atr=features['ATR'].values
-position=None
-
-for i in range(window,len(prices)-1):
-    pred=pred_price
-    cur=prices[i]
-    sig="BUY" if pred>cur else "SELL"
-    a=atr[i]
-    next_p=prices[i+1]
-
-    if position is None:
-        entry=cur
-        sl=entry-a if sig=="BUY" else entry+a
-        tp=entry+2*a if sig=="BUY" else entry-2*a
-        position=sig
-
-    if position=="BUY":
-        if next_p<=sl: capital*=0.99; position=None
-        elif next_p>=tp: capital*=1.02; position=None
-    else:
-        if next_p>=sl: capital*=0.99; position=None
-        elif next_p<=tp: capital*=1.02; position=None
-
-    equity.append(capital)
-
-st.line_chart(equity)
-
-# ---------------- MULTI-STOCK SCANNER ----------------
+# -------- MULTI-STOCK SCANNER --------
 st.subheader("📡 AI Market Scanner")
 scan_list = st.sidebar.text_area(
     "Stocks to Scan",
