@@ -16,14 +16,16 @@ from tensorflow.keras.layers import LSTM, Dense
 st.set_page_config(page_title="AI Trading Terminal", layout="wide")
 st.title("📊 AI Trading Terminal")
 
-# -------- TELEGRAM FUNCTION --------
+# -------- TELEGRAM --------
 def send_telegram_alert(message):
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
     if token and chat_id:
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
         try:
-            requests.post(url, data={"chat_id": chat_id, "text": message})
+            requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                data={"chat_id": chat_id, "text": message}
+            )
         except:
             pass
 
@@ -46,7 +48,7 @@ data['ATR'] = ta.volatility.AverageTrueRange(
     data['High'], data['Low'], data['Close']
 ).average_true_range()
 
-# -------- TRADINGVIEW STYLE CHART --------
+# -------- CHART --------
 st.subheader("📈 Price Chart")
 
 fig = go.Figure()
@@ -61,14 +63,20 @@ fig.add_trace(go.Scatter(x=data.index, y=data['EMA200'], name="EMA200"))
 fig.update_layout(height=600, xaxis_rangeslider_visible=False)
 st.plotly_chart(fig, use_container_width=True)
 
-# -------- MULTI TIMEFRAME TREND --------
+# -------- MULTI TIMEFRAME TREND (FIXED) --------
 st.subheader("⏳ Multi-Timeframe Trend")
 
 daily = yf.download(symbol, period="6mo", interval="1d")
 hourly = yf.download(symbol, period="1mo", interval="1h")
 
-daily_trend = "Bullish" if daily['Close'].iloc[-1] > daily['Close'].rolling(50).mean().iloc[-1] else "Bearish"
-hourly_trend = "Bullish" if hourly['Close'].iloc[-1] > hourly['Close'].rolling(50).mean().iloc[-1] else "Bearish"
+daily_close = daily['Close'].iloc[:,0] if isinstance(daily['Close'], pd.DataFrame) else daily['Close']
+hourly_close = hourly['Close'].iloc[:,0] if isinstance(hourly['Close'], pd.DataFrame) else hourly['Close']
+
+daily_ma = daily_close.rolling(50).mean().iloc[-1]
+hourly_ma = hourly_close.rolling(50).mean().iloc[-1]
+
+daily_trend = "Bullish" if daily_close.iloc[-1] > daily_ma else "Bearish"
+hourly_trend = "Bullish" if hourly_close.iloc[-1] > hourly_ma else "Bearish"
 
 st.write(f"Daily Trend: **{daily_trend}**")
 st.write(f"Hourly Trend: **{hourly_trend}**")
@@ -113,7 +121,7 @@ confidence = min(abs(pred_price-current_price)/current_price*100*5, 95)
 st.subheader("🧠 AI Signal")
 st.write(f"{ai_signal} | Confidence {confidence:.1f}%")
 
-# -------- TRADE JOURNAL --------
+# -------- JOURNAL --------
 log_file="trade_log.csv"
 entry=pd.DataFrame([{
     "Date":datetime.now(),"Stock":symbol,
@@ -125,7 +133,6 @@ journal=pd.read_csv(log_file)
 st.dataframe(journal.tail())
 
 # -------- PERFORMANCE --------
-st.subheader("📊 Performance")
 journal['Result'] = np.where(
     (journal['Signal']=="BUY") & (journal['Prediction']>journal['Price']),"Win",
     np.where((journal['Signal']=="SELL") & (journal['Prediction']<journal['Price']),"Win","Loss")
@@ -134,7 +141,7 @@ wins=(journal['Result']=="Win").sum()
 losses=(journal['Result']=="Loss").sum()
 st.metric("Accuracy",f"{wins/(wins+losses)*100:.2f}%")
 
-# -------- RISK ENGINE --------
+# -------- RISK --------
 st.subheader("🛡 Risk Management")
 capital = st.number_input("Capital",10000)
 risk_percent = st.slider("Risk %",1,5,2)
@@ -145,7 +152,7 @@ take_profit=current_price+atr*2 if ai_signal=="BUY" else current_price-atr*2
 position_size=risk_amount/abs(current_price-stop_loss)
 st.metric("Position Size",f"{position_size:.2f}")
 
-# -------- PORTFOLIO ENGINE --------
+# -------- PORTFOLIO --------
 st.subheader("💼 Portfolio Allocation")
 portfolio={"RELIANCE.NS":0.25,"TCS.NS":0.25,"INFY.NS":0.25,"HDFCBANK.NS":0.25}
 portfolio_value=0
