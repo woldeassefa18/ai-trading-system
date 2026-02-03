@@ -192,7 +192,8 @@ for stock, weight in portfolio.items():
     except:
         continue
 
-st.metric("Portfolio Value", f"${float(portfolio_value):,.2f}")
+st.metric("Portfolio Value", f"${float(np.asarray(portfolio_value).item()):,.2f}")
+
 
 # -------- AUTO LOOP --------
 time.sleep(900)
