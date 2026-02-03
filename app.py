@@ -157,6 +157,29 @@ st.metric("Position Size",f"{position_size:.2f}")
 st.metric("Stop Loss",f"{stop_loss:.2f}")
 st.metric("Take Profit",f"{take_profit:.2f}")
 
+# -------- EQUITY CURVE --------
+st.subheader("📈 Equity Curve Simulation")
+
+journal = pd.read_csv(log_file)
+
+if len(journal) > 5:
+    journal['PnL'] = np.where(
+        (journal['Signal']=="BUY") & (journal['Prediction']>journal['Price']), risk_amount*2,
+        np.where((journal['Signal']=="SELL") & (journal['Prediction']<journal['Price']), risk_amount*2, -risk_amount)
+    )
+
+    journal['Equity'] = journal['PnL'].cumsum() + capital
+
+    peak = journal['Equity'].cummax()
+    drawdown = (journal['Equity'] - peak) / peak * 100
+    max_dd = drawdown.min()
+
+    st.line_chart(journal[['Equity']])
+    st.metric("Max Drawdown", f"{max_dd:.2f}%")
+else:
+    st.info("Not enough trades for equity curve.")
+
+
 # -------- AUTO SERVER LOOP --------
 time.sleep(900)
 st.rerun()
