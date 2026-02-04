@@ -11,7 +11,7 @@ st.set_page_config(layout="wide")
 st.title("🌍 Universal AI Trading Terminal")
 
 # =============================
-# 📌 SIDEBAR (MASTER CONTROL)
+# 📌 SIDEBAR
 # =============================
 symbol = st.sidebar.text_input("Asset (TradingView format)", "NASDAQ:AAPL")
 interval = st.sidebar.selectbox("Chart Timeframe", ["1", "5", "15", "60", "D"])
@@ -29,7 +29,7 @@ def convert_symbol(tv_symbol):
 
 yf_symbol = convert_symbol(symbol)
 
-col1, col2 = st.columns([2,1])
+col1, col2 = st.columns([2, 1])
 
 # =============================
 # 📈 TRADINGVIEW CHART
@@ -37,13 +37,13 @@ col1, col2 = st.columns([2,1])
 with col1:
     tv_chart = f"""
     <iframe 
-        src="https://www.tradingview.com/widgetembed/?symbol={symbol}&interval={interval}&theme=dark&style=1&toolbarbg=1e1e1e&hide_top_toolbar=false&studies=RSI%40tv-basicstudies%2CMACD%40tv-basicstudies"
+        src="https://www.tradingview.com/widgetembed/?symbol={symbol}&interval={interval}&theme=dark&style=1&toolbarbg=1e1e1e&studies=RSI%40tv-basicstudies%2CMACD%40tv-basicstudies"
         width="100%" height="700" frameborder="0"></iframe>
     """
     st.components.v1.html(tv_chart, height=700)
 
 # =============================
-# 🧠 UNIVERSAL AI ENGINE
+# 🧠 AI ENGINE
 # =============================
 with col2:
     st.subheader("🧠 AI Market Intelligence")
@@ -57,13 +57,14 @@ with col2:
 
     data = load_data(yf_symbol)
 
-    if data.empty or len(data) < 120:
-        st.warning("Limited history, AI confidence may be lower.")
+    if data.empty:
+        st.error("No market data available.")
+        st.stop()
 
     # Indicators
     data['RSI'] = ta.momentum.RSIIndicator(data['Close']).rsi()
-    data['EMA50'] = ta.trend.EMAIndicator(data['Close'],50).ema_indicator()
-    data['EMA200'] = ta.trend.EMAIndicator(data['Close'],200).ema_indicator()
+    data['EMA50'] = ta.trend.EMAIndicator(data['Close'], 50).ema_indicator()
+    data['EMA200'] = ta.trend.EMAIndicator(data['Close'], 200).ema_indicator()
     data['MACD'] = ta.trend.MACD(data['Close']).macd()
     data['ATR'] = ta.volatility.AverageTrueRange(
         data['High'], data['Low'], data['Close']
@@ -72,7 +73,6 @@ with col2:
     features = data[['Close','RSI','EMA50','EMA200','MACD','ATR','Volume']].dropna()
 
     if st.button("Run AI Analysis"):
-
         scaler = MinMaxScaler()
         scaled = scaler.fit_transform(features)
 
@@ -114,9 +114,9 @@ with col2:
 st.subheader("🛡 Risk Management")
 
 capital = st.number_input("Capital", 10000)
-risk_percent = st.slider("Risk % per trade",1,5,2)
+risk_percent = st.slider("Risk % per trade", 1, 5, 2)
 
-risk_amount = capital * (risk_percent/100)
+risk_amount = capital * (risk_percent / 100)
 atr = data['ATR'].iloc[-1]
 position_size = risk_amount / atr
 
