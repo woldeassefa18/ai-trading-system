@@ -50,11 +50,25 @@ with col2:
             df.columns = df.columns.get_level_values(0)
         return df
 
-    data = load_data(yf_symbol)
+  ai_data = load_data(yf_symbol)
 
-    if data.empty or len(data) < 100:
-        st.warning("Not enough data for AI.")
-        st.stop()
+if ai_data.empty:
+    st.error("AI data unavailable for this symbol.")
+else:
+    if len(ai_data) < 60:
+        st.warning("Limited history, AI confidence reduced.")
+
+    # Indicators
+    ai_data['RSI'] = ta.momentum.RSIIndicator(ai_data['Close']).rsi()
+    ai_data['EMA50'] = ta.trend.EMAIndicator(ai_data['Close'],50).ema_indicator()
+    ai_data['EMA200'] = ta.trend.EMAIndicator(ai_data['Close'],200).ema_indicator()
+    ai_data['MACD'] = ta.trend.MACD(ai_data['Close']).macd()
+    ai_data['ATR'] = ta.volatility.AverageTrueRange(
+        ai_data['High'], ai_data['Low'], ai_data['Close']
+    ).average_true_range()
+
+    features = ai_data[['Close','RSI','EMA50','EMA200','MACD','ATR','Volume']].dropna()
+
 
     # Indicators
     data['RSI'] = ta.momentum.RSIIndicator(data['Close']).rsi()
@@ -93,7 +107,8 @@ with col2:
             np.concatenate([pred_scaled, np.zeros((1,6))], axis=1)
         )[0][0]
 
-        current_price = features['Close'].iloc[-1]
+        current_price = ai_data['Close'].iloc[-1]
+
         signal = "BUY" if pred_price > current_price else "SELL"
         confidence = min(abs(pred_price-current_price)/current_price*100*5, 95)
 
