@@ -17,9 +17,11 @@ def fix_yf_data(df):
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
+    df = df.copy()
+
     for col in ['Open','High','Low','Close','Volume']:
         if col in df.columns:
-            df[col] = pd.Series(np.array(df[col]).reshape(-1), index=df.index)
+            df[col] = pd.Series(df[col]).squeeze()
 
     return df
 
@@ -72,7 +74,6 @@ with col2:
         st.error("No market data available.")
         st.stop()
 
-    # Indicators
     data['RSI'] = ta.momentum.RSIIndicator(data['Close']).rsi()
     data['EMA50'] = ta.trend.EMAIndicator(data['Close'], 50).ema_indicator()
     data['EMA200'] = ta.trend.EMAIndicator(data['Close'], 200).ema_indicator()
@@ -103,9 +104,7 @@ with col2:
         model.compile(optimizer='adam', loss='mse')
         model.fit(X, y, epochs=3, batch_size=16, verbose=0)
 
-        last_seq = X[-1].reshape(1, window, X.shape[2])
-        pred_scaled = model.predict(last_seq, verbose=0)
-
+        pred_scaled = model.predict(X[-1].reshape(1, 30, X.shape[2]), verbose=0)
         pred_price = scaler.inverse_transform(
             np.concatenate([pred_scaled, np.zeros((1,6))], axis=1)
         )[0][0]
@@ -116,8 +115,6 @@ with col2:
 
         st.success(f"Signal: {signal}")
         st.write(f"Confidence: {confidence:.1f}%")
-        st.write(f"Predicted Price: {pred_price:.2f}")
-        st.write(f"Current Price: {current_price:.2f}")
 
 # =============================
 # 📡 MULTI-STOCK AI SCANNER
@@ -134,7 +131,8 @@ if st.button("Run Market Scanner"):
 
     for asset in assets:
         yf_symbol = convert_symbol(asset)
-        df = fix_yf_data(yf.download(yf_symbol, period="1y", interval="1d", progress=False))
+        df = yf.download(yf_symbol, period="1y", interval="1d", progress=False)
+        df = fix_yf_data(df)
 
         if df.empty or len(df) < 100:
             continue
@@ -171,8 +169,7 @@ if st.button("Run Market Scanner"):
         results.append([asset, signal, confidence])
 
     scan_df = pd.DataFrame(results, columns=["Asset","Signal","Confidence %"])
-    scan_df = scan_df.sort_values("Confidence %", ascending=False)
-    st.dataframe(scan_df, use_container_width=True)
+    st.dataframe(scan_df.sort_values("Confidence %", ascending=False), use_container_width=True)
 
 # =============================
 # 🛡 RISK PANEL
