@@ -10,9 +10,9 @@ from tensorflow.keras.layers import LSTM, Dense
 st.set_page_config(layout="wide")
 st.title("🌍 AI Market Intelligence Terminal")
 
-# =============================
-# 🔧 FIX YFINANCE DATA SHAPE
-# =============================
+# =====================================================
+# 🔧 HARD FIX FOR YFINANCE 2D ARRAY BUG (RENDER SAFE)
+# =====================================================
 def fix_yf_data(df):
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
@@ -21,19 +21,16 @@ def fix_yf_data(df):
 
     for col in ['Open','High','Low','Close','Volume']:
         if col in df.columns:
-            df[col] = pd.Series(df[col]).squeeze()
+            df[col] = pd.Series(df[col].to_numpy().flatten(), index=df.index)
 
     return df
 
-# =============================
+# =====================================================
 # 📌 SIDEBAR
-# =============================
+# =====================================================
 symbol = st.sidebar.text_input("Asset (TradingView format)", "NASDAQ:AAPL")
 interval = st.sidebar.selectbox("Chart Timeframe", ["1", "5", "15", "60", "D"])
 
-# =============================
-# 🔄 SYMBOL CONVERTER
-# =============================
 def convert_symbol(tv_symbol):
     if "NSE:" in tv_symbol:
         return tv_symbol.split(":")[1] + ".NS"
@@ -46,9 +43,9 @@ yf_symbol = convert_symbol(symbol)
 
 col1, col2 = st.columns([2, 1])
 
-# =============================
+# =====================================================
 # 📈 TRADINGVIEW CHART
-# =============================
+# =====================================================
 with col1:
     tv_chart = f"""
     <iframe 
@@ -57,9 +54,9 @@ with col1:
     """
     st.components.v1.html(tv_chart, height=700)
 
-# =============================
+# =====================================================
 # 🧠 UNIVERSAL AI ENGINE
-# =============================
+# =====================================================
 with col2:
     st.subheader("🧠 AI Signal Engine")
 
@@ -71,7 +68,7 @@ with col2:
     data = load_data(yf_symbol)
 
     if data.empty:
-        st.error("No market data available.")
+        st.error("No data available.")
         st.stop()
 
     data['RSI'] = ta.momentum.RSIIndicator(data['Close']).rsi()
@@ -116,9 +113,9 @@ with col2:
         st.success(f"Signal: {signal}")
         st.write(f"Confidence: {confidence:.1f}%")
 
-# =============================
+# =====================================================
 # 📡 MULTI-STOCK AI SCANNER
-# =============================
+# =====================================================
 st.subheader("📡 Multi-Stock AI Scanner")
 
 assets = [
@@ -134,7 +131,7 @@ if st.button("Run Market Scanner"):
         df = yf.download(yf_symbol, period="1y", interval="1d", progress=False)
         df = fix_yf_data(df)
 
-        if df.empty or len(df) < 100:
+        if df.empty or len(df) < 120:
             continue
 
         df['RSI'] = ta.momentum.RSIIndicator(df['Close']).rsi()
@@ -171,18 +168,5 @@ if st.button("Run Market Scanner"):
     scan_df = pd.DataFrame(results, columns=["Asset","Signal","Confidence %"])
     st.dataframe(scan_df.sort_values("Confidence %", ascending=False), use_container_width=True)
 
-# =============================
+# =====================================================
 # 🛡 RISK PANEL
-# =============================
-st.subheader("🛡 Risk Management")
-
-capital = st.number_input("Capital", 10000)
-risk_percent = st.slider("Risk % per trade", 1, 5, 2)
-
-risk_amount = capital * (risk_percent / 100)
-atr = data['ATR'].iloc[-1]
-position_size = risk_amount / atr
-
-colA, colB = st.columns(2)
-colA.metric("Risk Amount", f"${risk_amount:.2f}")
-colB.metric("Position Size", f"{position_size:.2f}")
