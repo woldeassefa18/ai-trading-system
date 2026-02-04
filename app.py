@@ -11,47 +11,36 @@ st.set_page_config(layout="wide")
 st.title("🚀 AI Trading Terminal")
 
 # =========================
-# 📌 SIDEBAR
+# 📌 SIDEBAR SETTINGS
 # =========================
-symbol = st.sidebar.text_input("Asset", "RELIANCE")
-exchange = st.sidebar.selectbox("Exchange", ["NSE", "BSE", "NASDAQ", "NYSE"])
-tv_symbol = f"{exchange}:{symbol}"
-
+symbol = st.sidebar.text_input("Asset (e.g. NSE:RELIANCE)", "NSE:RELIANCE")
 interval = st.sidebar.selectbox("Timeframe", ["1", "5", "15", "60", "D"])
 
-# =========================
-# 📈 LEFT: TRADINGVIEW
-# =========================
 col1, col2 = st.columns([2,1])
 
+# =========================
+# 📈 LEFT — REAL TRADINGVIEW CHART
+# =========================
 with col1:
     tv_chart = f"""
-    <div id="tv_chart"></div>
-    <script src="https://s3.tradingview.com/tv.js"></script>
-    <script>
-    new TradingView.widget({{
-      "container_id": "tv_chart",
-      "symbol": "{symbol}",
-      "interval": "{interval}",
-      "theme": "dark",
-      "style": "1",
-      "locale": "en",
-      "toolbar_bg": "#1e1e1e",
-      "enable_publishing": false,
-      "hide_top_toolbar": false,
-      "allow_symbol_change": true,
-      "studies": ["RSI@tv-basicstudies","MACD@tv-basicstudies"]
-    }});
-    </script>
+    <iframe 
+        src="https://www.tradingview.com/widgetembed/?symbol={symbol}&interval={interval}&theme=dark&style=1&toolbarbg=1e1e1e&hide_top_toolbar=false&hide_legend=false&save_image=false&studies=RSI%40tv-basicstudies%2CMACD%40tv-basicstudies%2CVolume%40tv-basicstudies"
+        width="100%" 
+        height="700" 
+        frameborder="0" 
+        allowtransparency="true" 
+        scrolling="no">
+    </iframe>
     """
     st.components.v1.html(tv_chart, height=700)
 
 # =========================
-# 🧠 RIGHT: AI ENGINE
+# 🧠 RIGHT — AI ENGINE
 # =========================
 with col2:
     st.subheader("🧠 AI Signal Engine")
 
+    # Convert TradingView symbol to Yahoo format
     yf_symbol = symbol.split(":")[-1] + ".NS" if "NSE:" in symbol else symbol
 
     @st.cache_data(ttl=300)
@@ -67,6 +56,7 @@ with col2:
         st.warning("Not enough data for AI.")
         st.stop()
 
+    # Indicators
     data['RSI'] = ta.momentum.RSIIndicator(data['Close']).rsi()
     data['EMA50'] = ta.trend.EMAIndicator(data['Close'],50).ema_indicator()
     data['EMA200'] = ta.trend.EMAIndicator(data['Close'],200).ema_indicator()
@@ -113,7 +103,7 @@ with col2:
         st.write(f"Current Price: {current_price:.2f}")
 
 # =========================
-# 🛡 RISK PANEL
+# 🛡 RISK MANAGEMENT PANEL
 # =========================
 st.subheader("🛡 Risk Management")
 
