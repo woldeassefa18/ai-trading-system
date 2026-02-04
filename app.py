@@ -11,7 +11,20 @@ st.set_page_config(layout="wide")
 st.title("🌍 AI Market Intelligence Terminal")
 
 # =============================
-# 📌 SIDEBAR — MASTER CONTROL
+# 🔧 FIX YFINANCE DATA SHAPE
+# =============================
+def fix_yf_data(df):
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    for col in ['Open','High','Low','Close','Volume']:
+        if col in df.columns:
+            df[col] = pd.Series(np.array(df[col]).reshape(-1), index=df.index)
+
+    return df
+
+# =============================
+# 📌 SIDEBAR
 # =============================
 symbol = st.sidebar.text_input("Asset (TradingView format)", "NASDAQ:AAPL")
 interval = st.sidebar.selectbox("Chart Timeframe", ["1", "5", "15", "60", "D"])
@@ -38,8 +51,7 @@ with col1:
     tv_chart = f"""
     <iframe 
         src="https://www.tradingview.com/widgetembed/?symbol={symbol}&interval={interval}&theme=dark&style=1&toolbarbg=1e1e1e&studies=RSI%40tv-basicstudies%2CMACD%40tv-basicstudies%2CVolume%40tv-basicstudies"
-        width="100%" height="700" frameborder="0">
-    </iframe>
+        width="100%" height="700" frameborder="0"></iframe>
     """
     st.components.v1.html(tv_chart, height=700)
 
@@ -52,9 +64,7 @@ with col2:
     @st.cache_data(ttl=300)
     def load_data(sym):
         df = yf.download(sym, period="2y", interval="1d", progress=False)
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-        return df
+        return fix_yf_data(df)
 
     data = load_data(yf_symbol)
 
@@ -115,13 +125,8 @@ with col2:
 st.subheader("📡 Multi-Stock AI Scanner")
 
 assets = [
-    "NASDAQ:AAPL",
-    "NASDAQ:TSLA",
-    "NASDAQ:MSFT",
-    "NASDAQ:NVDA",
-    "NSE:RELIANCE",
-    "NSE:TCS",
-    "NSE:HDFCBANK"
+    "NASDAQ:AAPL","NASDAQ:TSLA","NASDAQ:MSFT","NASDAQ:NVDA",
+    "NSE:RELIANCE","NSE:TCS","NSE:HDFCBANK"
 ]
 
 if st.button("Run Market Scanner"):
@@ -129,7 +134,7 @@ if st.button("Run Market Scanner"):
 
     for asset in assets:
         yf_symbol = convert_symbol(asset)
-        df = yf.download(yf_symbol, period="1y", interval="1d", progress=False)
+        df = fix_yf_data(yf.download(yf_symbol, period="1y", interval="1d", progress=False))
 
         if df.empty or len(df) < 100:
             continue
@@ -148,10 +153,7 @@ if st.button("Run Market Scanner"):
         scaled = scaler.fit_transform(features)
 
         window = 30
-        X = []
-        for i in range(window, len(scaled)):
-            X.append(scaled[i-window:i])
-        X = np.array(X)
+        X = np.array([scaled[i-window:i] for i in range(window, len(scaled))])
 
         model = Sequential([LSTM(32, input_shape=(X.shape[1], X.shape[2])), Dense(1)])
         model.compile(optimizer='adam', loss='mse')
@@ -170,7 +172,6 @@ if st.button("Run Market Scanner"):
 
     scan_df = pd.DataFrame(results, columns=["Asset","Signal","Confidence %"])
     scan_df = scan_df.sort_values("Confidence %", ascending=False)
-
     st.dataframe(scan_df, use_container_width=True)
 
 # =============================
@@ -188,4 +189,3 @@ position_size = risk_amount / atr
 colA, colB = st.columns(2)
 colA.metric("Risk Amount", f"${risk_amount:.2f}")
 colB.metric("Position Size", f"{position_size:.2f}")
-
