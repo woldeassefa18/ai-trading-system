@@ -13,7 +13,10 @@ st.title("🚀 AI Trading Terminal")
 # =========================
 # 📌 SIDEBAR
 # =========================
-symbol = st.sidebar.text_input("Asset", "NSE:RELIANCE")
+symbol = st.sidebar.text_input("Asset", "RELIANCE")
+exchange = st.sidebar.selectbox("Exchange", ["NSE", "BSE", "NASDAQ", "NYSE"])
+tv_symbol = f"{exchange}:{symbol}"
+
 interval = st.sidebar.selectbox("Timeframe", ["1", "5", "15", "60", "D"])
 
 # =========================
