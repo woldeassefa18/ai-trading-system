@@ -8,10 +8,10 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 
 st.set_page_config(layout="wide")
-st.title("🌍 Universal AI Trading Terminal")
+st.title("🌍 AI Market Intelligence Terminal")
 
 # =============================
-# 📌 SIDEBAR
+# 📌 SIDEBAR — MASTER CONTROL
 # =============================
 symbol = st.sidebar.text_input("Asset (TradingView format)", "NASDAQ:AAPL")
 interval = st.sidebar.selectbox("Chart Timeframe", ["1", "5", "15", "60", "D"])
@@ -37,16 +37,17 @@ col1, col2 = st.columns([2, 1])
 with col1:
     tv_chart = f"""
     <iframe 
-        src="https://www.tradingview.com/widgetembed/?symbol={symbol}&interval={interval}&theme=dark&style=1&toolbarbg=1e1e1e&studies=RSI%40tv-basicstudies%2CMACD%40tv-basicstudies"
-        width="100%" height="700" frameborder="0"></iframe>
+        src="https://www.tradingview.com/widgetembed/?symbol={symbol}&interval={interval}&theme=dark&style=1&toolbarbg=1e1e1e&studies=RSI%40tv-basicstudies%2CMACD%40tv-basicstudies%2CVolume%40tv-basicstudies"
+        width="100%" height="700" frameborder="0">
+    </iframe>
     """
     st.components.v1.html(tv_chart, height=700)
 
 # =============================
-# 🧠 AI ENGINE
+# 🧠 UNIVERSAL AI ENGINE
 # =============================
 with col2:
-    st.subheader("🧠 AI Market Intelligence")
+    st.subheader("🧠 AI Signal Engine")
 
     @st.cache_data(ttl=300)
     def load_data(sym):
@@ -109,6 +110,70 @@ with col2:
         st.write(f"Current Price: {current_price:.2f}")
 
 # =============================
+# 📡 MULTI-STOCK AI SCANNER
+# =============================
+st.subheader("📡 Multi-Stock AI Scanner")
+
+assets = [
+    "NASDAQ:AAPL",
+    "NASDAQ:TSLA",
+    "NASDAQ:MSFT",
+    "NASDAQ:NVDA",
+    "NSE:RELIANCE",
+    "NSE:TCS",
+    "NSE:HDFCBANK"
+]
+
+if st.button("Run Market Scanner"):
+    results = []
+
+    for asset in assets:
+        yf_symbol = convert_symbol(asset)
+        df = yf.download(yf_symbol, period="1y", interval="1d", progress=False)
+
+        if df.empty or len(df) < 100:
+            continue
+
+        df['RSI'] = ta.momentum.RSIIndicator(df['Close']).rsi()
+        df['EMA50'] = ta.trend.EMAIndicator(df['Close'],50).ema_indicator()
+        df['EMA200'] = ta.trend.EMAIndicator(df['Close'],200).ema_indicator()
+        df['MACD'] = ta.trend.MACD(df['Close']).macd()
+        df['ATR'] = ta.volatility.AverageTrueRange(
+            df['High'], df['Low'], df['Close']
+        ).average_true_range()
+
+        features = df[['Close','RSI','EMA50','EMA200','MACD','ATR','Volume']].dropna()
+
+        scaler = MinMaxScaler()
+        scaled = scaler.fit_transform(features)
+
+        window = 30
+        X = []
+        for i in range(window, len(scaled)):
+            X.append(scaled[i-window:i])
+        X = np.array(X)
+
+        model = Sequential([LSTM(32, input_shape=(X.shape[1], X.shape[2])), Dense(1)])
+        model.compile(optimizer='adam', loss='mse')
+        model.fit(X, scaled[window:,0], epochs=2, verbose=0)
+
+        pred_scaled = model.predict(X[-1].reshape(1, window, X.shape[2]), verbose=0)
+        pred_price = scaler.inverse_transform(
+            np.concatenate([pred_scaled, np.zeros((1,6))], axis=1)
+        )[0][0]
+
+        current_price = features['Close'].iloc[-1]
+        signal = "BUY" if pred_price > current_price else "SELL"
+        confidence = round(abs(pred_price-current_price)/current_price*100*5, 1)
+
+        results.append([asset, signal, confidence])
+
+    scan_df = pd.DataFrame(results, columns=["Asset","Signal","Confidence %"])
+    scan_df = scan_df.sort_values("Confidence %", ascending=False)
+
+    st.dataframe(scan_df, use_container_width=True)
+
+# =============================
 # 🛡 RISK PANEL
 # =============================
 st.subheader("🛡 Risk Management")
@@ -123,3 +188,4 @@ position_size = risk_amount / atr
 colA, colB = st.columns(2)
 colA.metric("Risk Amount", f"${risk_amount:.2f}")
 colB.metric("Position Size", f"{position_size:.2f}")
+
