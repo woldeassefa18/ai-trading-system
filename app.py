@@ -10,9 +10,9 @@ from tensorflow.keras.layers import LSTM, Dense
 st.set_page_config(layout="wide")
 st.title("🌍 AI Market Intelligence Terminal")
 
-# =====================================================
-# 🔧 HARD FIX FOR YFINANCE 2D ARRAY BUG (RENDER SAFE)
-# =====================================================
+# ==============================
+# 🔧 HARD FIX FOR YFINANCE BUG
+# ==============================
 def fix_yf_data(df):
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
@@ -25,9 +25,9 @@ def fix_yf_data(df):
 
     return df
 
-# =====================================================
+# ==============================
 # 📌 SIDEBAR
-# =====================================================
+# ==============================
 symbol = st.sidebar.text_input("Asset (TradingView format)", "NASDAQ:AAPL")
 interval = st.sidebar.selectbox("Chart Timeframe", ["1", "5", "15", "60", "D"])
 
@@ -43,9 +43,9 @@ yf_symbol = convert_symbol(symbol)
 
 col1, col2 = st.columns([2, 1])
 
-# =====================================================
+# ==============================
 # 📈 TRADINGVIEW CHART
-# =====================================================
+# ==============================
 with col1:
     tv_chart = f"""
     <iframe 
@@ -54,119 +54,129 @@ with col1:
     """
     st.components.v1.html(tv_chart, height=700)
 
-# =====================================================
-# 🧠 UNIVERSAL AI ENGINE
-# =====================================================
+# ==============================
+# 🧠 AI SIGNAL ENGINE
+# ==============================
 with col2:
     st.subheader("🧠 AI Signal Engine")
 
     @st.cache_data(ttl=300)
     def load_data(sym):
-        df = yf.download(sym, period="2y", interval="1d", progress=False)
+        df = yf.download(sym, period="1y", interval="1d", progress=False)
         return fix_yf_data(df)
 
     data = load_data(yf_symbol)
 
-    if data.empty:
-        st.error("No data available.")
-        st.stop()
+    if not data.empty:
+        data['RSI'] = ta.momentum.RSIIndicator(data['Close']).rsi()
+        data['EMA50'] = ta.trend.EMAIndicator(data['Close'], 50).ema_indicator()
+        data['EMA200'] = ta.trend.EMAIndicator(data['Close'], 200).ema_indicator()
+        data['MACD'] = ta.trend.MACD(data['Close']).macd()
+        data['ATR'] = ta.volatility.AverageTrueRange(
+            data['High'], data['Low'], data['Close']
+        ).average_true_range()
 
-    data['RSI'] = ta.momentum.RSIIndicator(data['Close']).rsi()
-    data['EMA50'] = ta.trend.EMAIndicator(data['Close'], 50).ema_indicator()
-    data['EMA200'] = ta.trend.EMAIndicator(data['Close'], 200).ema_indicator()
-    data['MACD'] = ta.trend.MACD(data['Close']).macd()
-    data['ATR'] = ta.volatility.AverageTrueRange(
-        data['High'], data['Low'], data['Close']
-    ).average_true_range()
+        features = data[['Close','RSI','EMA50','EMA200','MACD','ATR','Volume']].dropna()
 
-    features = data[['Close','RSI','EMA50','EMA200','MACD','ATR','Volume']].dropna()
+        if st.button("Run AI Analysis"):
+            with st.spinner("AI analyzing market..."):
+                scaler = MinMaxScaler()
+                scaled = scaler.fit_transform(features)
 
-    if st.button("Run AI Analysis"):
-        scaler = MinMaxScaler()
-        scaled = scaler.fit_transform(features)
+                window = 20
+                X, y = [], []
+                for i in range(window, len(scaled)):
+                    X.append(scaled[i-window:i])
+                    y.append(scaled[i,0])
+                X, y = np.array(X), np.array(y)
 
-        window = 30
-        X, y = [], []
-        for i in range(window, len(scaled)):
-            X.append(scaled[i-window:i])
-            y.append(scaled[i,0])
-        X, y = np.array(X), np.array(y)
+                model = Sequential([
+                    LSTM(32, input_shape=(X.shape[1], X.shape[2])),
+                    Dense(1)
+                ])
+                model.compile(optimizer='adam', loss='mse')
+                model.fit(X, y, epochs=1, verbose=0)
 
-        model = Sequential([
-            LSTM(64, return_sequences=True, input_shape=(X.shape[1], X.shape[2])),
-            LSTM(32),
-            Dense(16, activation='relu'),
-            Dense(1)
-        ])
-        model.compile(optimizer='adam', loss='mse')
-        model.fit(X, y, epochs=3, batch_size=16, verbose=0)
+                pred_scaled = model.predict(X[-1].reshape(1, window, X.shape[2]), verbose=0)
+                pred_price = scaler.inverse_transform(
+                    np.concatenate([pred_scaled, np.zeros((1,6))], axis=1)
+                )[0][0]
 
-        pred_scaled = model.predict(X[-1].reshape(1, 30, X.shape[2]), verbose=0)
-        pred_price = scaler.inverse_transform(
-            np.concatenate([pred_scaled, np.zeros((1,6))], axis=1)
-        )[0][0]
+                current_price = data['Close'].iloc[-1]
+                signal = "BUY" if pred_price > current_price else "SELL"
+                confidence = min(abs(pred_price-current_price)/current_price*100*5, 95)
 
-        current_price = data['Close'].iloc[-1]
-        signal = "BUY" if pred_price > current_price else "SELL"
-        confidence = min(abs(pred_price-current_price)/current_price*100*5, 95)
+                st.success(f"Signal: {signal}")
+                st.write(f"Confidence: {confidence:.1f}%")
 
-        st.success(f"Signal: {signal}")
-        st.write(f"Confidence: {confidence:.1f}%")
-
-# =====================================================
+# ==============================
 # 📡 MULTI-STOCK AI SCANNER
-# =====================================================
+# ==============================
 st.subheader("📡 Multi-Stock AI Scanner")
 
 assets = [
-    "NASDAQ:AAPL","NASDAQ:TSLA","NASDAQ:MSFT","NASDAQ:NVDA",
+    "NASDAQ:AAPL","NASDAQ:TSLA","NASDAQ:MSFT",
     "NSE:RELIANCE","NSE:TCS","NSE:HDFCBANK"
 ]
 
 if st.button("Run Market Scanner"):
-    results = []
+    with st.spinner("Scanning markets with AI..."):
+        results = []
 
-    for asset in assets:
-        yf_symbol = convert_symbol(asset)
-        df = yf.download(yf_symbol, period="1y", interval="1d", progress=False)
-        df = fix_yf_data(df)
+        for asset in assets:
+            yf_symbol = convert_symbol(asset)
+            df = yf.download(yf_symbol, period="6mo", interval="1d", progress=False)
+            df = fix_yf_data(df)
 
-        if df.empty or len(df) < 120:
-            continue
+            if df.empty or len(df) < 80:
+                continue
 
-        df['RSI'] = ta.momentum.RSIIndicator(df['Close']).rsi()
-        df['EMA50'] = ta.trend.EMAIndicator(df['Close'],50).ema_indicator()
-        df['EMA200'] = ta.trend.EMAIndicator(df['Close'],200).ema_indicator()
-        df['MACD'] = ta.trend.MACD(df['Close']).macd()
-        df['ATR'] = ta.volatility.AverageTrueRange(
-            df['High'], df['Low'], df['Close']
-        ).average_true_range()
+            df['RSI'] = ta.momentum.RSIIndicator(df['Close']).rsi()
+            df['EMA50'] = ta.trend.EMAIndicator(df['Close'],50).ema_indicator()
+            df['EMA200'] = ta.trend.EMAIndicator(df['Close'],200).ema_indicator()
+            df['MACD'] = ta.trend.MACD(df['Close']).macd()
+            df['ATR'] = ta.volatility.AverageTrueRange(
+                df['High'], df['Low'], df['Close']
+            ).average_true_range()
 
-        features = df[['Close','RSI','EMA50','EMA200','MACD','ATR','Volume']].dropna()
+            features = df[['Close','RSI','EMA50','EMA200','MACD','ATR','Volume']].dropna()
 
-        scaler = MinMaxScaler()
-        scaled = scaler.fit_transform(features)
+            scaler = MinMaxScaler()
+            scaled = scaler.fit_transform(features)
 
-        window = 30
-        X = np.array([scaled[i-window:i] for i in range(window, len(scaled))])
+            window = 20
+            X = np.array([scaled[i-window:i] for i in range(window, len(scaled))])
 
-        model = Sequential([LSTM(32, input_shape=(X.shape[1], X.shape[2])), Dense(1)])
-        model.compile(optimizer='adam', loss='mse')
-        model.fit(X, scaled[window:,0], epochs=2, verbose=0)
+            model = Sequential([LSTM(16, input_shape=(X.shape[1], X.shape[2])), Dense(1)])
+            model.compile(optimizer='adam', loss='mse')
+            model.fit(X, scaled[window:,0], epochs=1, verbose=0)
 
-        pred_scaled = model.predict(X[-1].reshape(1, window, X.shape[2]), verbose=0)
-        pred_price = scaler.inverse_transform(
-            np.concatenate([pred_scaled, np.zeros((1,6))], axis=1)
-        )[0][0]
+            pred_scaled = model.predict(X[-1].reshape(1, window, X.shape[2]), verbose=0)
+            pred_price = scaler.inverse_transform(
+                np.concatenate([pred_scaled, np.zeros((1,6))], axis=1)
+            )[0][0]
 
-        current_price = features['Close'].iloc[-1]
-        signal = "BUY" if pred_price > current_price else "SELL"
-        confidence = round(abs(pred_price-current_price)/current_price*100*5, 1)
+            current_price = features['Close'].iloc[-1]
+            signal = "BUY" if pred_price > current_price else "SELL"
+            confidence = round(abs(pred_price-current_price)/current_price*100*5, 1)
 
-        results.append([asset, signal, confidence])
+            results.append([asset, signal, confidence])
 
-    scan_df = pd.DataFrame(results, columns=["Asset","Signal","Confidence %"])
-    st.dataframe(scan_df.sort_values("Confidence %", ascending=False), use_container_width=True)
+        scan_df = pd.DataFrame(results, columns=["Asset","Signal","Confidence %"])
+        st.dataframe(scan_df.sort_values("Confidence %", ascending=False), use_container_width=True)
 
-# =====================================================
+# ==============================
 # 🛡 RISK PANEL
+# ==============================
+st.subheader("🛡 Risk Management")
+
+capital = st.number_input("Capital", 10000)
+risk_percent = st.slider("Risk % per trade", 1, 5, 2)
+
+risk_amount = capital * (risk_percent / 100)
+atr = data['ATR'].iloc[-1] if not data.empty else 1
+position_size = risk_amount / atr
+
+colA, colB = st.columns(2)
+colA.metric("Risk Amount", f"${risk_amount:.2f}")
+colB.metric("Position Size", f"{position_size:.2f}")
