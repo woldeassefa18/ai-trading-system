@@ -10,9 +10,9 @@ from tensorflow.keras.layers import LSTM, Dense
 st.set_page_config(layout="wide")
 st.title("🌍 AI Market Intelligence Terminal")
 
-# ==============================
-# 🔧 HARD FIX FOR YFINANCE BUG
-# ==============================
+# =====================================================
+# 🔧 FIX YFINANCE 2D DATA BUG
+# =====================================================
 def fix_yf_data(df):
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
@@ -25,9 +25,9 @@ def fix_yf_data(df):
 
     return df
 
-# ==============================
+# =====================================================
 # 📌 SIDEBAR
-# ==============================
+# =====================================================
 symbol = st.sidebar.text_input("Asset (TradingView format)", "NASDAQ:AAPL")
 interval = st.sidebar.selectbox("Chart Timeframe", ["1", "5", "15", "60", "D"])
 
@@ -43,9 +43,9 @@ yf_symbol = convert_symbol(symbol)
 
 col1, col2 = st.columns([2, 1])
 
-# ==============================
+# =====================================================
 # 📈 TRADINGVIEW CHART
-# ==============================
+# =====================================================
 with col1:
     tv_chart = f"""
     <iframe 
@@ -54,9 +54,9 @@ with col1:
     """
     st.components.v1.html(tv_chart, height=700)
 
-# ==============================
+# =====================================================
 # 🧠 AI SIGNAL ENGINE
-# ==============================
+# =====================================================
 with col2:
     st.subheader("🧠 AI Signal Engine")
 
@@ -79,39 +79,39 @@ with col2:
         features = data[['Close','RSI','EMA50','EMA200','MACD','ATR','Volume']].dropna()
 
         if st.button("Run AI Analysis"):
-            with st.spinner("AI analyzing market..."):
-                scaler = MinMaxScaler()
-                scaled = scaler.fit_transform(features)
+            if len(features) < 40:
+                st.warning("Not enough data for AI model.")
+            else:
+                with st.spinner("AI analyzing..."):
+                    scaler = MinMaxScaler()
+                    scaled = scaler.fit_transform(features)
 
-                window = 20
-                X, y = [], []
-                for i in range(window, len(scaled)):
-                    X.append(scaled[i-window:i])
-                    y.append(scaled[i,0])
-                X, y = np.array(X), np.array(y)
+                    window = 20
+                    X, y = [], []
+                    for i in range(window, len(scaled)):
+                        X.append(scaled[i-window:i])
+                        y.append(scaled[i,0])
+                    X, y = np.array(X), np.array(y)
 
-                model = Sequential([
-                    LSTM(32, input_shape=(X.shape[1], X.shape[2])),
-                    Dense(1)
-                ])
-                model.compile(optimizer='adam', loss='mse')
-                model.fit(X, y, epochs=1, verbose=0)
+                    model = Sequential([LSTM(32, input_shape=(X.shape[1], X.shape[2])), Dense(1)])
+                    model.compile(optimizer='adam', loss='mse')
+                    model.fit(X, y, epochs=1, verbose=0)
 
-                pred_scaled = model.predict(X[-1].reshape(1, window, X.shape[2]), verbose=0)
-                pred_price = scaler.inverse_transform(
-                    np.concatenate([pred_scaled, np.zeros((1,6))], axis=1)
-                )[0][0]
+                    pred_scaled = model.predict(X[-1].reshape(1, window, X.shape[2]), verbose=0)
+                    pred_price = scaler.inverse_transform(
+                        np.concatenate([pred_scaled, np.zeros((1,6))], axis=1)
+                    )[0][0]
 
-                current_price = data['Close'].iloc[-1]
-                signal = "BUY" if pred_price > current_price else "SELL"
-                confidence = min(abs(pred_price-current_price)/current_price*100*5, 95)
+                    current_price = data['Close'].iloc[-1]
+                    signal = "BUY" if pred_price > current_price else "SELL"
+                    confidence = min(abs(pred_price-current_price)/current_price*100*5, 95)
 
-                st.success(f"Signal: {signal}")
-                st.write(f"Confidence: {confidence:.1f}%")
+                    st.success(f"Signal: {signal}")
+                    st.write(f"Confidence: {confidence:.1f}%")
 
-# ==============================
+# =====================================================
 # 📡 MULTI-STOCK AI SCANNER
-# ==============================
+# =====================================================
 st.subheader("📡 Multi-Stock AI Scanner")
 
 assets = [
@@ -120,7 +120,7 @@ assets = [
 ]
 
 if st.button("Run Market Scanner"):
-    with st.spinner("Scanning markets with AI..."):
+    with st.spinner("Scanning markets..."):
         results = []
 
         for asset in assets:
@@ -140,6 +140,9 @@ if st.button("Run Market Scanner"):
             ).average_true_range()
 
             features = df[['Close','RSI','EMA50','EMA200','MACD','ATR','Volume']].dropna()
+
+            if len(features) < 40:
+                continue
 
             scaler = MinMaxScaler()
             scaled = scaler.fit_transform(features)
@@ -162,12 +165,15 @@ if st.button("Run Market Scanner"):
 
             results.append([asset, signal, confidence])
 
-        scan_df = pd.DataFrame(results, columns=["Asset","Signal","Confidence %"])
-        st.dataframe(scan_df.sort_values("Confidence %", ascending=False), use_container_width=True)
+        if results:
+            scan_df = pd.DataFrame(results, columns=["Asset","Signal","Confidence %"])
+            st.dataframe(scan_df.sort_values("Confidence %", ascending=False), use_container_width=True)
+        else:
+            st.warning("No stocks had sufficient AI data.")
 
-# ==============================
+# =====================================================
 # 🛡 RISK PANEL
-# ==============================
+# =====================================================
 st.subheader("🛡 Risk Management")
 
 capital = st.number_input("Capital", 10000)
