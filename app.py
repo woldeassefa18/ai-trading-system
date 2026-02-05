@@ -11,14 +11,13 @@ st.set_page_config(layout="wide")
 st.title("🌍 AI Market Intelligence Terminal")
 
 # =====================================================
-# 🔧 FIX YFINANCE 2D DATA BUG
+# 🔧 FIX YFINANCE SHAPE BUG
 # =====================================================
 def fix_yf_data(df):
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
     df = df.copy()
-
     for col in ['Open','High','Low','Close','Volume']:
         if col in df.columns:
             df[col] = pd.Series(df[col].to_numpy().flatten(), index=df.index)
@@ -70,23 +69,23 @@ with col2:
     if not data.empty:
         data['RSI'] = ta.momentum.RSIIndicator(data['Close']).rsi()
         data['EMA50'] = ta.trend.EMAIndicator(data['Close'], 50).ema_indicator()
-        data['EMA200'] = ta.trend.EMAIndicator(data['Close'], 200).ema_indicator()
+        data['EMA100'] = ta.trend.EMAIndicator(data['Close'], 100).ema_indicator()
         data['MACD'] = ta.trend.MACD(data['Close']).macd()
         data['ATR'] = ta.volatility.AverageTrueRange(
             data['High'], data['Low'], data['Close']
         ).average_true_range()
 
-        features = data[['Close','RSI','EMA50','EMA200','MACD','ATR','Volume']].dropna()
+        features = data[['Close','RSI','EMA50','EMA100','MACD','ATR','Volume']].dropna()
 
         if st.button("Run AI Analysis"):
-            if len(features) < 40:
+            if len(features) < 25:
                 st.warning("Not enough data for AI model.")
             else:
                 with st.spinner("AI analyzing..."):
                     scaler = MinMaxScaler()
                     scaled = scaler.fit_transform(features)
 
-                    window = 20
+                    window = 15
                     X, y = [], []
                     for i in range(window, len(scaled)):
                         X.append(scaled[i-window:i])
@@ -128,26 +127,26 @@ if st.button("Run Market Scanner"):
             df = yf.download(yf_symbol, period="6mo", interval="1d", progress=False)
             df = fix_yf_data(df)
 
-            if df.empty or len(df) < 80:
+            if df.empty or len(df) < 60:
                 continue
 
             df['RSI'] = ta.momentum.RSIIndicator(df['Close']).rsi()
             df['EMA50'] = ta.trend.EMAIndicator(df['Close'],50).ema_indicator()
-            df['EMA200'] = ta.trend.EMAIndicator(df['Close'],200).ema_indicator()
+            df['EMA100'] = ta.trend.EMAIndicator(df['Close'],100).ema_indicator()
             df['MACD'] = ta.trend.MACD(df['Close']).macd()
             df['ATR'] = ta.volatility.AverageTrueRange(
                 df['High'], df['Low'], df['Close']
             ).average_true_range()
 
-            features = df[['Close','RSI','EMA50','EMA200','MACD','ATR','Volume']].dropna()
+            features = df[['Close','RSI','EMA50','EMA100','MACD','ATR','Volume']].dropna()
 
-            if len(features) < 40:
+            if len(features) < 25:
                 continue
 
             scaler = MinMaxScaler()
             scaled = scaler.fit_transform(features)
 
-            window = 20
+            window = 15
             X = np.array([scaled[i-window:i] for i in range(window, len(scaled))])
 
             model = Sequential([LSTM(16, input_shape=(X.shape[1], X.shape[2])), Dense(1)])
